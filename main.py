@@ -3,11 +3,18 @@ from fastapi.responses import StreamingResponse
 import json
 import xlsxwriter
 import io
+from parse_ogrn_nalog import scrape_ogrn_info
+from pydantic import BaseModel
+
 
 app = FastAPI()
 
 
-@app.post("/upload")
+class OGRNRequest(BaseModel):
+    ogrn: str
+
+
+@app.post("/upload_file_forming")
 async def upload_file(file: UploadFile = File(...)):
     if not file.filename.endswith('.json'):
         raise HTTPException(status_code=400, detail="Unsupported file format")
@@ -42,6 +49,18 @@ async def upload_file(file: UploadFile = File(...)):
 
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": "attachment;filename=all_users_data.xlsx"})
+
+
+@app.post("/get-info_ogrn")
+def get_info(request: OGRNRequest):
+    try:
+        data = scrape_ogrn_info(request.ogrn)
+        if data:
+            return data
+        else:
+            raise HTTPException(status_code=500, detail="Failed to retrieve data")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
