@@ -7,7 +7,7 @@ json_filename = 'ik.json'  # Замените на путь к вашему JSON
 excel_filename = 'all_users_data.xlsx'  # Имя файла для сохранения Excel
 
 # URL вашего API
-api_url = 'http://127.0.0.1:8000/upload'  # Замените на URL вашего API
+api_url = 'http://192.168.10.193:8080/upload'  # Замените на URL вашего API
 
 # Чтение данных из JSON файла
 with open(json_filename, 'r', encoding='utf-8') as file:
