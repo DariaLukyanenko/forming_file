@@ -4,6 +4,7 @@ from seleniumwire import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
+import requests
 
 from dotenv import load_dotenv
 
@@ -14,7 +15,7 @@ import os
 
 load_dotenv()
 
-DIV_BTN = '/html/body/main/section[2]/div/div/div[2]/div/div/div[2]/div[2]/div[1]/div'
+DIV_BTN = '//div[@class="pb-card pb-card--clickable"]'
 
 proxy_username = os.getenv('PROXY_USERNAME')
 proxy_password = os.getenv('PROXY_PASSWORD')
@@ -55,9 +56,24 @@ def to_click(btn, browser):
 
 
 def get_info_ogrn(browser, wait, ogrn):
-    data = {}
+    data = {
+        "status": None,
+        "inn": None,
+        "short_name": None,
+        "full_name": None,
+        "kpp": None,
+        "address": None,
+        "registration_date": None,
+        "okved": None,
+        "ogrn": None,
+        "boss_name": None,
+        "boss_post": None
+    }
     try:
         browser.get(f'https://pb.nalog.ru/search.html#t=1718002842355&mode=search-all&queryAll={ogrn}&page=1&pageSize=10')
+        wait.until(
+            EC.visibility_of_all_elements_located(
+                (By.XPATH, '//div[@class="pb-card pb-card--clickable"]')))
         to_click(DIV_BTN, browser)
         wait.until(
             EC.visibility_of_all_elements_located(
@@ -76,43 +92,113 @@ def get_info_ogrn(browser, wait, ogrn):
         }
 
         for key, xpath in labels_and_xpaths.items():
-            element = browser.find_element(By.XPATH, xpath)
-            data[key] = element.text
+            try:
+                element = browser.find_element(By.XPATH, xpath)
+                data[key] = element.text
+            except:
+                continue  # If element is not found, retain null in the data dictionary
 
-        boss_label = browser.find_element(By.XPATH,
-                                          "//*[contains(text(), 'Сведения о лице, имеющем право без доверенности действовать от имени юридического лица')]")
-        boss_name_number = boss_label.find_element(By.XPATH,
-                                                   ".//following::div[@class='pb-company-field-value']/span[@class='font-weight-bold']")
-        data["boss_name"] = boss_name_number.text
-        boss_post_element = boss_label.find_element(By.XPATH,
-                                                    ".//following::div[@class='pb-company-field-name' and contains(text(), 'Должность руководителя:')]/following-sibling::div[@class='pb-company-field-value']")
-        data["boss_post"] = boss_post_element.text
-    except Exception as e:
-        print(f"Exception occurred: {e}")
+        try:
+            boss_label = browser.find_element(By.XPATH,
+                                              "//*[contains(text(), 'Сведения о лице, имеющем право без доверенности действовать от имени юридического лица')]")
+            boss_name_number = boss_label.find_element(By.XPATH,
+                                                       ".//following::div[@class='pb-company-field-value']/span[@class='font-weight-bold']")
+            data["boss_name"] = boss_name_number.text
+            boss_post_element = boss_label.find_element(By.XPATH,
+                                                        ".//following::div[@class='pb-company-field-name' and contains(text(), 'Должность руководителя:')]/following-sibling::div[@class='pb-company-field-value']")
+            data["boss_post"] = boss_post_element.text
+        except:
+            pass
+
+    except Exception:
         return None
     return data
 
 
-def scrape_ogrn_info(ogrn):
-    max_retries = 3
+def get_ogrn_info_new(ogrn, proxies):
+    try:
+        response = requests.get(
+            f'https://datanewton.ru/api/v2/counterparty/{ogrn}',
+            proxies= proxies
+        )
+        json_data = response.json()
+
+        okved_main = next(
+            ({"code": okved.get("code"), "value": okved.get("value")} for okved in json_data.get('okveds', []) if okved.get("main")), None)
+
+        managers = json_data.get('managers', [])
+        boss_name = managers[0].get("fio") if managers else None
+        boss_post = managers[0].get("position") if managers else None
+
+        info = {
+            'inn': json_data.get('inn'),
+            'ogrn': json_data.get('ogrn'),
+            'kpp': json_data.get('kpp'),
+            'region': json_data.get('region'),
+            'full_name': json_data.get('full_name'),
+            'short_name': json_data.get('short_name'),
+            'status': json_data.get('status', {}).get("status_rus_short"),
+            'address': json_data.get('address', {}).get("value"),
+            "boss_name": boss_name,
+            "boss_post": boss_post,
+            "okveds": okved_main
+        }
+
+        return info
+
+    except (requests.RequestException, KeyError, IndexError) as e:
+        print(f"Exception occurred while fetching data from API: {e}")
+        return None
+
+
+def get_ogrn_by_inn(inn, proxies):
+    response = requests.get(
+        f'https://datanewton.ru/api/v1/counterparty?query={inn}&active_only=false&limit=30&offset=0',
+        proxies= proxies
+    )
+    data = response.json()
+
+    counterparties = data["data"]["counterparties"]
+
+    for counterparty in counterparties:
+        if counterparty["inn"] == inn:
+            ogrn = counterparty["ogrn"]
+            return(get_ogrn_info_new(ogrn, proxies))
+
+
+def scrape_ogrn_info(ogrn_or_inn):
+    proxies = {
+        'https': get_proxy_ip()
+    }
+    if len(ogrn_or_inn) == 13 or len(ogrn_or_inn) == 15:
+        ogrn = ogrn_or_inn
+        data = get_ogrn_info_new(ogrn, proxies)
+    else:
+        inn = ogrn_or_inn
+        data = get_ogrn_by_inn(inn, proxies)
+
+    if data:
+        return data
+
+    max_retries = 2
     retry_delay = 5
-    data = None
 
     for attempt in range(max_retries):
         try:
             browser = create_browser()
             wait = get_wait(browser)
-            data = get_info_ogrn(browser, wait, ogrn)
+
+            data = get_info_ogrn(browser, wait, ogrn_or_inn)
             if data:
-                break  # Если успешно, выйти из цикла
-        except Exception as e:
-            print(f"Exception in main: {e}")
+                break
+        except Exception:
+            data = None
         finally:
             browser.quit()
 
         if attempt < max_retries - 1:
-            print(f"Retrying in {retry_delay} seconds... ({attempt + 1}/{max_retries})")
             time.sleep(retry_delay)
-        else:
-            print("Failed to retrieve info after multiple attempts.")
+
     return data
+
+print(scrape_ogrn_info('322774600051291'))
