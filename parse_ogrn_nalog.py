@@ -203,5 +203,3 @@ def scrape_ogrn_info(ogrn_or_inn):
             time.sleep(retry_delay)
 
     return data
-
-print(scrape_ogrn_info('322774600051291'))
