@@ -25,7 +25,10 @@ proxy_port = os.getenv('PROXY_PORT')
 def get_proxy_ip():
     with open('../../Proxies.txt', 'r') as file:
         data = file.read().split()
-        return data[randint(0, len(data)-1)]
+        random_proxy = data[randint(0, len(data) - 1)]
+        proxy = f'http://{proxy_username}:{proxy_password}@{random_proxy}:{proxy_port}'
+        print(proxy)
+        return proxy
 
 
 def create_browser():
@@ -33,7 +36,7 @@ def create_browser():
     print(f'using {proxy_ip}')
     proxy_options = {
         'proxy': {
-            'https': f'http://{proxy_username}:{proxy_password}@{proxy_ip}:{proxy_port}'
+            'https': proxy_ip
         }
     }
     chrome_options = Options()
@@ -154,7 +157,7 @@ def get_ogrn_info_new(ogrn, proxies):
 def get_ogrn_by_inn(inn, proxies):
     response = requests.get(
         f'https://datanewton.ru/api/v1/counterparty?query={inn}&active_only=false&limit=30&offset=0',
-        proxies= proxies
+        proxies = proxies
     )
     data = response.json()
 
