@@ -118,11 +118,10 @@ def get_info_ogrn(browser, wait, ogrn):
     return data
 
 
-def get_ogrn_info_new(ogrn, proxies):
+def get_ogrn_info_new(ogrn):
     try:
         response = requests.get(
-            f'https://datanewton.ru/api/v2/counterparty/{ogrn}',
-            proxies= proxies
+            f'https://datanewton.ru/api/v2/counterparty/{ogrn}'
         )
         json_data = response.json()
 
@@ -154,31 +153,31 @@ def get_ogrn_info_new(ogrn, proxies):
         return None
 
 
-def get_ogrn_by_inn(inn, proxies):
-    response = requests.get(
-        f'https://datanewton.ru/api/v1/counterparty?query={inn}&active_only=false&limit=30&offset=0',
-        proxies = proxies
-    )
-    data = response.json()
+def get_ogrn_by_inn(inn):
+    try:
+        response = requests.get(
+            f'https://datanewton.ru/api/v1/counterparty?query={inn}&active_only=false&limit=30&offset=0'
+        )
+        data = response.json()
 
-    counterparties = data["data"]["counterparties"]
+        counterparties = data["data"]["counterparties"]
 
-    for counterparty in counterparties:
-        if counterparty["inn"] == inn:
-            ogrn = counterparty["ogrn"]
-            return(get_ogrn_info_new(ogrn, proxies))
+        for counterparty in counterparties:
+            if counterparty["inn"] == inn:
+                ogrn = counterparty["ogrn"]
+                return(get_ogrn_info_new(ogrn))
+
+    except (requests.RequestException, KeyError, IndexError):
+        return None
 
 
 def scrape_ogrn_info(ogrn_or_inn):
-    proxies = {
-        'https': get_proxy_ip()
-    }
     if len(ogrn_or_inn) == 13 or len(ogrn_or_inn) == 15:
         ogrn = ogrn_or_inn
-        data = get_ogrn_info_new(ogrn, proxies)
+        data = get_ogrn_info_new(ogrn)
     else:
         inn = ogrn_or_inn
-        data = get_ogrn_by_inn(inn, proxies)
+        data = get_ogrn_by_inn(inn)
 
     if data:
         return data
